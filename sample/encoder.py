@@ -13,7 +13,7 @@ import tensorflow as tf
 import random
 import numpy as np
 
-
+# 参考gpt-2
 @lru_cache()
 def bytes_to_unicode():
     """
@@ -233,7 +233,8 @@ def tokenize_for_grover_training(encoder, item, desired_size=1024, unconditional
     The canonical order is
 
     DOMAIN DATE AUTHORS TITLE ARTICLE SUMMARY
-
+    
+    将文章的字段随机划分为两个不相交的集合a,b来模拟推理，并随机剔除10%的单个字段，剔除除article以外的35%的字段
 
     :param encoder:
     :param item: Contains things like
