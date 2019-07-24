@@ -42,7 +42,7 @@ random.seed(FLAGS.seed + FLAGS.fold)
 
 encoder = get_encoder()
 
-
+# 将jsonl文件转换为.tfrecord文件
 class S3TFRecordWriter(object):
     def __init__(self, fn):
         self.fn = fn
