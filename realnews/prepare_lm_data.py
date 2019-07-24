@@ -13,61 +13,32 @@ import collections
 import os
 from tempfile import TemporaryDirectory
 
-parser = argparse.ArgumentParser(description='SCRAPE!')
-parser.add_argument(
-    '-fold',
-    dest='fold',
-    default=0,
-    type=int,
-    help='which fold we are on'
-)
-parser.add_argument(
-    '-num_folds',
-    dest='num_folds',
-    default=1,
-    type=int,
-    help='Number of folds (corresponding to both the number of training files and the number of testing files)',
-)
-parser.add_argument(
-    '-seed',
-    dest='seed',
-    default=1337,
-    type=int,
-    help='which seed to use'
-)
-parser.add_argument(
-    '-base_fn',
-    dest='base_fn',
-    default='realnews_',
-    type=str,
-    help='We will output files that are like {base_fn}_{n}.tfrecord for n in 0, ..., 1023'
-)
+flags = tf.flags
 
-parser.add_argument(
-    '-input_fn',
-    dest='input_fn',
-    default='realnews.jsonl',
-    type=str,
-    help='Base filename to use. THIS MUST BE A LOCAL FILE.'
-)
-parser.add_argument(
-    '-max_seq_length',
-    dest='max_seq_length',
-    default=1024,
-    type=int,
-    help='Max sequence length',
-)
+FLAGS = flags.FLAGS
+flags.DEFINE_integer(
+    'fold',0,
+    'which fold we are on')
+flags.DEFINE_integer(
+    'num_folds',1,
+    'Number of folds (corresponding to both the number of training files and the number of testing files)')
+flags.DEFINE_integer(
+    'seed',1337,
+    'which seed to use')
+flags.DEFINE_string(
+    'base_fn','realnews_',
+    'We will output files that are like {base_fn}_{n}.tfrecord for n in 0, ..., 1023')
+flags.DEFINE_string(
+    'input_fn',None,
+    'Base filename to use. THIS MUST BE A LOCAL FILE.')
+flags.DEFINE_integer(
+    'max_seq_length',1024,
+    'Max sequence length')
+flags.DEFINE_bool(
+    'add_extra_articles_to_end',True,
+    'Whether to minimize padding by adding extra articles to the end')
 
-parser.add_argument(
-    '-add_extra_articles_to_end',
-    dest='add_extra_articles_to_end',
-    type=bool,
-    action='store_true',
-    help='Whether to minimize padding by adding extra articles to the end',
-)
-
-args = parser.parse_args()
-random.seed(args.seed + args.fold)
+random.seed(FLAGS.seed + FLAGS.fold)
 
 encoder = get_encoder()
 
@@ -136,14 +107,14 @@ class S3TFRecordWriter(object):
 
 def article_iterator(encoder, final_desired_size=1025):
     """ Iterate through the provided filename + tokenize"""
-    assert os.path.exists(args.input_fn)
-    with open(args.input_fn, 'r') as f:
+    assert os.path.exists(FLAGS.input_fn)
+    with open(FLAGS.input_fn, 'r') as f:
         for l_no, l in enumerate(f):
-            if l_no % args.num_folds == args.fold:
+            if l_no % FLAGS.num_folds == FLAGS.fold:
                 article = json.loads(l)
                 article['input_ids'] = tokenize_for_grover_training(encoder, article, desired_size=final_desired_size,
                                                                     unconditional_prob=.35)
-                article['inst_index'] = (l_no // args.num_folds)
+                article['inst_index'] = (l_no // FLAGS.num_folds)
                 if article['inst_index'] < 100:
                     print('---\nINPUT{}. {}\n---\nTokens: {}\n'.format(article['inst_index'],
                                                                        detokenize(encoder, article['input_ids']),
@@ -201,23 +172,23 @@ def buffered_and_sliding_window_article_iterator(encoder, current_desired_size, 
             yield from _stream_from_buffer(buffer,
                                            current_desired_size=current_desired_size,
                                            pad_token=encoder.padding,
-                                           add_articles_to_end=args.add_extra_articles_to_end)
+                                           add_articles_to_end=FLAGS.add_extra_articles_to_end)
             buffer = []
     yield from _stream_from_buffer(buffer,
                                    current_desired_size=current_desired_size,
                                    pad_token=encoder.padding,
-                                   add_articles_to_end=args.add_extra_articles_to_end)
+                                   add_articles_to_end=FLAGS.add_extra_articles_to_end)
 
 
 # OK now write the tfrecord file
 total_written = 0
-train_file = args.base_fn + 'train{:04d}.tfrecord'.format(args.fold)
-val_file = args.base_fn + 'val{:04d}.tfrecord'.format(args.fold)
+train_file = FLAGS.base_fn + 'train{:04d}.tfrecord'.format(FLAGS.fold)
+val_file = FLAGS.base_fn + 'val{:04d}.tfrecord'.format(FLAGS.fold)
 with S3TFRecordWriter(train_file) as train_writer, S3TFRecordWriter(val_file) as val_writer:
-    for article in buffered_and_sliding_window_article_iterator(encoder, current_desired_size=args.max_seq_length + 1,
-                                                                final_desired_size=max(args.max_seq_length + 1, 1025)):
+    for article in buffered_and_sliding_window_article_iterator(encoder, current_desired_size=FLAGS.max_seq_length + 1,
+                                                                final_desired_size=max(FLAGS.max_seq_length + 1, 1025)):
         writer2use = train_writer if article['split'] == 'train' else val_writer
-        assert len(article['input_ids']) == (args.max_seq_length + 1)
+        assert len(article['input_ids']) == (FLAGS.max_seq_length + 1)
 
         features = collections.OrderedDict()
         features["input_ids"] = create_int_feature(article['input_ids'])
